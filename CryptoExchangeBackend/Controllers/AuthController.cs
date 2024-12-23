@@ -1,5 +1,4 @@
 ﻿using CryptoExchangeBackend.Models;
-using CryptoExchangeBackend.Services;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
@@ -15,23 +14,45 @@ public class AuthController : ControllerBase
         _jwtService = jwtService;
     }
 
+    private string HashPassword(string password)
+    {
+        return BCrypt.Net.BCrypt.HashPassword(password);
+    }
+
+    private bool VerifyPassword(string password, string hashedPassword)
+    {
+        return BCrypt.Net.BCrypt.Verify(password, hashedPassword);
+    }
+
     [HttpPost("register")]
     public async Task<IActionResult> Register(User user)
     {
+        var existingUser = _context.Users.FirstOrDefault(u => u.Email == user.Email);
+        if (existingUser != null)
+        {
+            return Conflict(new { message = "Bu e-posta adresi zaten kayıtlıdır." });
+        }
+
+        user.Password = HashPassword(user.Password);
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
-        return Ok(new { message = "User registered successfully" });
+        return Ok(new { message = "Kullanıcı başarıyla kaydedildi." });
     }
 
     [HttpPost("login")]
-    public IActionResult Login(User user)
+    public IActionResult Login([FromBody] LoginRequest loginRequest)
     {
-        var dbUser = _context.Users.FirstOrDefault(u => u.Username == user.Username && u.Password == user.Password);
+        var user = _context.Users.FirstOrDefault(u => u.Email == loginRequest.Email);
 
-        if (dbUser == null)
-            return Unauthorized(new { message = "Invalid username or password" });
+        if (user == null || !VerifyPassword(loginRequest.Password, user.Password))
+            return Unauthorized(new { message = "Geçersiz e-posta veya şifre." });
 
-        var token = _jwtService.GenerateToken(user.Username);
-        return Ok(new { token });
+        var token = _jwtService.GenerateToken(user.Username, user.Email); 
+
+        return Ok(new
+        {
+            token,
+            username = user.Username,
+        });
     }
 }

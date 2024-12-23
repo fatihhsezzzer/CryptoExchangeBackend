@@ -9,10 +9,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-
-// Swagger/OpenAPI ayarlarý
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<JwtService>();
 
 // DbContext yapýlandýrmasý
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -34,6 +33,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// CORS Politikasý Ekleme
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") // Frontend URL'nizi buraya ekleyin
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 var app = builder.Build();
 
 // Swagger'ý yalnýzca geliþtirme ortamýnda etkinleþtir
@@ -46,12 +57,22 @@ if (app.Environment.IsDevelopment())
 // HTTPS yönlendirmesi
 app.UseHttpsRedirection();
 
-// WebSocket middleware
+// CORS Middleware
+app.UseCors("AllowSpecificOrigin");
+
+// WebSocket Middleware
 app.UseWebSockets();
 
-// Authentication ve Authorization middleware
+// Authentication ve Authorization Middleware
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Apply migrations on startup
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    dbContext.Database.Migrate();
+}
 
 // WebSocket Endpoint
 app.Map("/ws", async context =>
